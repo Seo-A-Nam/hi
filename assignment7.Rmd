@@ -3,6 +3,7 @@
 # load library
 library(dlookr) #결측치 확인
 
+library(ggplot2)
 library(rpart)
 library(tidyverse)
 library(rpart.plot)#의사결정 나무
@@ -14,12 +15,7 @@ library(psych)
 library(corrplot) # 상관계수를 plot
 library(creditmodel)
 
-library(nnet) #신경망
-library(devtools) #시각화
-source_url('https://gist.githubusercontent.com/Peque/41a9e20d6687f2f3108d/raw/85e14f3a292e126f1454864427e3a189c2fe33f3/nnet_plot_update.r')
-library(reshape)
-library(reshape2)
-library(NeuralNetTools) #변수 중요도 확인
+
 
 library(kernlab)#SVM
 library(e1071) # SVM 파라미터 최적화
@@ -37,19 +33,14 @@ str(df)
 
 ```{r}
 #명목형 데이터 팩터 변환
-df$destination <- as.factor(df$destination)
-df$gender <- as.factor(df$gender)
-df$passanger <- as.factor(df$passanger)
-df$weather <- as.factor(df$weather)
-df$time <- as.factor(df$time)
-df$coupon <- as.factor(df$coupon)
-df$expiration <- as.factor(df$expiration)
+df[sapply(df, is.character)] <- lapply(df[sapply(df, is.character)], 
+                                       as.factor)
 df$Y <- as.factor(df$Y)
 
-
 #순서형 데이터 변환
-df$income <- as.ordered(df$income)
+#df$income <- as.ordered(df$income)
 str(df)
+
 ```
 ```{r}
 ##duplicated 함수를 이용한 중복 값 확인
@@ -82,6 +73,12 @@ str(df) # 컬럼별 특징 보기
 colnames(df)
 levels(df$Y) # 종속 변수의 종류 파악 (0, 1의 이진형 변수)
 
+
+# Box Plot을 통해 데이터 분석 (극단치 여부)
+temp <- df
+temp[sapply(temp, is.integer)] <- lapply(df[sapply(df, is.integer)], 
+                                       as.factor) # int 값들을 factor 변환
+boxplot(temp[-16])
 ```
 # 1) 상관계수 구하기 : crammer's V와 Pearson으로 명목형 변수들을 포함한 상관계수 구하기
 cramer's V를 사용해 Y와 명목형 변수들 사이의 상관계수 표 먼저 구한다.
@@ -94,7 +91,7 @@ cramer's V를 사용해 Y와 명목형 변수들 사이의 상관계수 표 먼�
 ```{r}
 # cramer's V를 통해 명목형 변수들로 상관계수표 출력
 temp <- df
-char_x_list = get_names(dat = df, types = c('factor', 'character'), get_ex = FALSE)
+char_x_list = get_names(dat = df, types = c('factor', 'ordered'), get_ex = FALSE)
 char_x_list # 명목형, 범주형 변수 리스트
 cor <- char_cor(dat = df[char_x_list])
 cor
@@ -134,7 +131,7 @@ as.data.frame(pearson_cor) # 피어슨 상관계수
 as.data.frame(cramerV_cor) # 크래머 V 상관계수
 
 ## 예측변수 선택 - 상관계수 절대값 0.03(피어슨), 0.15(크래머) 이상인 속성들
-pearson_cor <- pearson_cor[!is.na(pearson_cor)] # NA 제거
+pearson_cor <- pearson_cor[!is.na(pearson_cor)] # NA 제거 (표준편차가 0인 값들은 NA가 됨)
 
 cat("피어슨 상관계수 - 절대값 큰 순서대로\n")
 sort(pearson_cor[pearson_cor>=0],decreasing=TRUE)
@@ -165,7 +162,6 @@ test <- df[-idx,]
 nrow(train)
 nrow(test)
 ```
-
 
 #의사결정 나무 parameter 최적화
 https://rpubs.com/JiawenQi/GridSearchIris 를 참고.
@@ -232,7 +228,8 @@ df.model <- rpart(Y~.,
 df.model
 fancyRpartPlot(df.model)
 rpartpred<-predict(df.model, test, type='class')
-confusionMatrix(rpartpred, test$Y)
+tree_cm <- confusionMatrix(rpartpred, test$Y)
+tree_cm
 ```
 
 
@@ -278,6 +275,12 @@ model
 
 
 ```{r}
+library(nnet) #신경망
+library(devtools) #시각화
+source_url('https://gist.githubusercontent.com/Peque/41a9e20d6687f2f3108d/raw/85e14f3a292e126f1454864427e3a189c2fe33f3/nnet_plot_update.r')
+library(reshape)
+library(reshape2)
+library(NeuralNetTools) #변수 중요도 확인
 set.seed(1234)
 
 nn.model <- nnet(Y~., data = train, size = 1, maxit = 1000, decay= 0.1)
@@ -286,8 +289,8 @@ plot.nnet(nn.model)
 garson(nn.model)
 
 pred.nn<-as.factor(predict(nn.model, test[,-9], type = "class"))
-confusionMatrix(data = pred.nn, reference=test[,9])
-
+ann_cm <- confusionMatrix(data = pred.nn, reference=test[,9])
+ann_cm
 ```
 
 
@@ -302,6 +305,14 @@ agreement <- pred.svm==test$Y
 
 table(agreement)
 
-prop.table(table(agreement))
+svm_cm <- prop.table(table(agreement))[2]
+svm_cm
+```
+
+# DT, ANN, SVM 성능 비교
+```{r}
+
+acc_data = c("DT"=tree_cm$overall[1], "ANN"=ann_cm$overall[1], "SVM"=svm_cm[1])
+acc_data
 
 ```
